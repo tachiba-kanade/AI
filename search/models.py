@@ -7,7 +7,7 @@ class Tag(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return self.id
+        return f"{self.id}"
 
 
 class ImageData(models.Model):
