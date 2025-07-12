@@ -1,11 +1,11 @@
-from django.contrib import admin
 from django.urls import path, include
 from rest_framework import routers
-
-from search.v1.views import ImageDataViewset
+from search.v1.views import ImageDataViewset, search_images, upload_and_search
 
 router = routers.SimpleRouter()
+router.register(r'image_data', ImageDataViewset)
 
-router.register(r'get_image_data', ImageDataViewset)
-
-urlpatterns = [] + router.urls
+urlpatterns = [
+    path('search/', search_images),
+    path('upload_and_search/', upload_and_search),
+] + router.urls
