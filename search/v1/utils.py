@@ -1,45 +1,38 @@
 from PIL import Image as PILImage
 from sentence_transformers import SentenceTransformer
 import spacy
-import torch
-from torchvision import transforms
-import numpy as np
-import PIL
-import io
-import os
 from transformers import BlipProcessor, BlipForConditionalGeneration
 from PIL import Image
+import open_clip
+import torch
+from PIL import Image
+from torchvision import transforms
 
-clip_model = SentenceTransformer('clip-ViT-B-32')
 
-# def generate_image_embedding(image_path_or_file):
-#     image = PILImage.open(image_path_or_file).convert("RGB")
-#     embedding = clip_model.encode(image)
-#     print("Embedds: ", embedding)
-#     return embedding.tobytes()
+tokenizer = open_clip.get_tokenizer('ViT-B-32')
+import open_clip
 
+clip_model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='openai')
+clip_model.eval()
 
 def generate_image_embedding(image_path_or_file):
     image = Image.open(image_path_or_file).convert("RGB")
-    emb = clip_model.encode(image)
-    return emb
+    image_tensor = preprocess(image).unsqueeze(0)  # add batch dimension
+    with torch.no_grad():
+        embedding = clip_model.encode_image(image_tensor)
+    return embedding.squeeze().numpy()
 
 
-# Load once at module level (not inside function for speed)
-processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
-nlp = spacy.load("en_core_web_sm")
+from transformers import BlipProcessor, BlipForConditionalGeneration
 
-# # More Intensive Generation - requires more memory
-# processor = BlipProcessor.from_pretrained("Salesforce/blip2-opt-2.7b")
-# model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip2-opt-2.7b", device_map="auto", torch_dtype=torch.float16)
-
+caption_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+caption_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
 
 def generate_image_text(image_path_or_file):
     image = Image.open(image_path_or_file).convert("RGB")
-    inputs = processor(images=image, return_tensors="pt")
-    out = model.generate(**inputs)
-    caption = processor.decode(out[0], skip_special_tokens=True)
+    inputs = caption_processor(images=image, return_tensors="pt")
+    out = caption_model.generate(**inputs)
+    caption = caption_processor.decode(out[0], skip_special_tokens=True)
     print("Caption: --> ", caption)
     return caption
 
@@ -62,6 +55,7 @@ def extract_image_metadata(image_file):
         return {"error": str(e)}
 
 
+nlp = spacy.load("en_core_web_sm")
 def generate_tags_from_caption(caption):
     doc = nlp(caption)
     tags = set()
@@ -69,10 +63,10 @@ def generate_tags_from_caption(caption):
         cleaned = chunk.text.strip().lower()
         if len(cleaned) > 1:
             tags.add(cleaned)
+
+    print("Here is the tags from caption -----> ", list(tags))
     return list(tags)
 
 
 def parse_tags(text):
-    # Naive tagging: split words, remove stopwords etc.
-    # For now just split commas
     return [tag.strip().lower() for tag in text.split(',') if tag.strip()]

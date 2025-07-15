@@ -12,6 +12,18 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+# import environ
+
+# env = environ.Env()
+# environ.Env.read_env()
+
+# # Now access the SECRET_KEY from the .env file
+# SECRET_KEY = env("SECRET_KEY")
+
+# DB_NAME = env("DB_NAME")
+# DB_USER = env("DB_USER")
+# DB_PASSWORD = env("DB_PASSWORD")
+# DB_HOST = env("DB_HOST")
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -31,7 +43,7 @@ ALLOWED_HOSTS = []
 
 # Application definition
 APPS =[
-    'search'
+    'search',
 ]
 
 INSTALLED_APPS = [
@@ -82,6 +94,14 @@ DATABASES = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
     }
+    # 'default': {
+    #     'ENGINE': 'django.db.backends.postgresql_psycopg2',
+    #     'NAME': 'rfitness',
+    #     'USER': 'postgres',
+    #     'PASSWORD': '1508',
+    #     'HOST': 'localhost',
+    #     'PORT': '5432',
+    # }
 }
 
 REST_FRAMEWORK = {

@@ -1,17 +1,3 @@
-# from rest_framework import viewsets
-# from rest_framework import permissions
-
-# from search.models import ImageData
-# from search.v1.serializers import ImageDataSerializer
-
-
-# class ImageDataViewset(viewsets.ModelViewSet):
-#     model = ImageData
-#     queryset = model.objects.all()
-#     serializer_class = ImageDataSerializer
-#     # permission_classes = []
-
-
 from rest_framework import viewsets
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -58,59 +44,6 @@ def search_images(request):
     return Response(top_results)
 
 
-# @api_view(['POST'])
-# @parser_classes([MultiPartParser, FormParser])
-# def upload_and_search(request):
-#     image_file = request.FILES.get('image')
-#     tags_input = request.data.get('tags', '')
-
-#     print("Files: ", image_file)
-
-#     if not image_file:
-#         return Response({"error": "Image file is required."}, status=400)
-
-#     # Step 1: Generate all info
-#     embedding = generate_image_embedding(image_file)
-#     caption = generate_image_text(image_file)
-#     metadata = extract_image_metadata(image_file)
-
-#     # Step 2: Save the image
-#     image_instance = ImageData.objects.create(
-#         image=image_file,
-#         image_text=caption,
-#         image_embedding=embedding,
-#         image_meta=metadata
-#     )
-
-#     print("Views: ", image_instance)
-
-#     tag_names = parse_tags(tags_input)
-#     for tag in tag_names:
-#         tag_obj, _ = Tag.objects.get_or_create(name=tag)
-#         image_instance.image_tags.add(tag_obj)
-
-#     # Step 3: Search for similar images
-#     model = SentenceTransformer('clip-ViT-B-32')
-#     query_emb = np.frombuffer(embedding, dtype=np.float32)
-
-#     similar_images = []
-#     for obj in ImageData.objects.exclude(id=image_instance.id):
-#         if not obj.image_embedding:
-#             continue
-#         db_emb = np.frombuffer(obj.image_embedding, dtype=np.float32)
-#         sim = np.dot(query_emb, db_emb) / (np.linalg.norm(query_emb) * np.linalg.norm(db_emb))
-#         similar_images.append((sim, obj))
-
-#     # Top 5 results
-#     similar_images.sort(key=lambda x: x[0], reverse=True)
-#     top_related = [ImageDataSerializer(img).data for _, img in similar_images[:5]]
-
-#     return Response({
-#         "uploaded_image": ImageDataSerializer(image_instance).data,
-#         "related_images": top_related
-#     })
-
-
 @api_view(['POST'])
 @parser_classes([MultiPartParser, FormParser])
 def upload_and_search(request):
@@ -120,18 +53,19 @@ def upload_and_search(request):
     if not image_file:
         return Response({"error": "Image file is required."}, status=400)
 
-    # Step 1: Generate AI features
+    # Generate AI features
     caption = generate_image_text(image_file)
-    embedding = generate_image_embedding(image_file).tolist()
+    embedding_array = generate_image_embedding(image_file).astype(np.float32)
+    embedding_bytes = embedding_array.tobytes()
     metadata = extract_image_metadata(image_file)
     auto_tags = generate_tags_from_caption(caption)
     all_tags = set(auto_tags + parse_tags(user_tags))
 
-    # Step 2: Save to DB
+    # Save to DB
     image_instance = ImageData.objects.create(
         image=image_file,
         image_text=caption,
-        image_embedding=embedding,
+        image_embedding=embedding_bytes,
         image_meta=metadata
     )
 
@@ -139,17 +73,18 @@ def upload_and_search(request):
         tag_obj, _ = Tag.objects.get_or_create(name=tag_name)
         image_instance.image_tags.add(tag_obj)
 
-    # Step 3: Vector search (cosine similarity)
-    query_emb = np.array(embedding)
+    # Vector search (cosine similarity)
+    query_emb = np.array(embedding_array, dtype=np.float32)
     results = []
     for obj in ImageData.objects.exclude(id=image_instance.id):
         if not obj.image_embedding:
             continue
-        db_emb = np.array(obj.image_embedding)
+        db_emb = np.frombuffer(obj.image_embedding, dtype=np.float32)
         sim = np.dot(query_emb, db_emb) / (np.linalg.norm(query_emb) * np.linalg.norm(db_emb))
         results.append((sim, obj))
 
     results.sort(key=lambda x: x[0], reverse=True)
+    # Selecting TOP 5 Relatable Images
     top_related = [ImageDataSerializer(obj).data for _, obj in results[:5]]
 
     return Response({
