@@ -40,3 +40,10 @@ class ImageDataSerializer(serializers.ModelSerializer):
             instance.image_tags.add(tag_obj)
 
         return instance
+# class TextSearchSerializer(serializers.Serializer):
+#     query = serializers.CharField()
+#     tags = serializers.ListField(
+#         child=serializers.CharField(),
+#         required=False,
+#         allow_empty=True
+#     )

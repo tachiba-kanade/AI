@@ -10,8 +10,6 @@ from torchvision import transforms
 
 
 tokenizer = open_clip.get_tokenizer('ViT-B-32')
-import open_clip
-
 clip_model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='openai')
 clip_model.eval()
 
