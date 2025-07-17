@@ -153,3 +153,51 @@ def text_search(request):
         "query": query,
         "results": top_results
     })
+@api_view(['POST'])
+@parser_classes([MultiPartParser, FormParser])
+def unified_search(request):
+    image_file = request.FILES.get('image', None)
+    query_text = request.data.get('query', '').strip()
+
+    if not image_file and not query_text:
+        return Response({"error": "Either 'image' or 'query' is required."}, status=400)
+
+    # Prepare embedding: either from image or text
+    if image_file:
+        # Image query
+        img = Image.open(image_file).convert("RGB")
+        img_tensor = preprocess(img).unsqueeze(0)
+        with torch.no_grad():
+            embedding = clip_model.encode_image(img_tensor).squeeze().numpy()
+    else:
+        # Text query
+        prompt = f"a photo of {query_text}"  # or use raw query
+        with torch.no_grad():
+            tokens = tokenizer([prompt])
+            embedding = clip_model.encode_text(tokens).squeeze().numpy()
+
+    embedding = embedding / np.linalg.norm(embedding)
+
+    # Search against stored image embeddings
+    results = []
+    for obj in ImageData.objects.all():
+        if not obj.image_embedding:
+            continue
+        db_emb = np.frombuffer(obj.image_embedding, dtype=np.float32)
+        db_emb = db_emb / np.linalg.norm(db_emb)
+        sim = float(np.dot(embedding, db_emb))
+        results.append((sim, obj))
+
+    # Sort and format results
+    results.sort(key=lambda x: x[0], reverse=True)
+    top_results = []
+    for sim, obj in results[:5]:
+        data = ImageDataSerializer(obj).data
+        data['similarity_score'] = round(sim, 4)
+        top_results.append(data)
+
+    return Response({
+        "query_type": "image" if image_file else "text",
+        "query": query_text if query_text else "uploaded image",
+        "results": top_results
+    })
