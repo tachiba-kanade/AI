@@ -7,7 +7,8 @@ import open_clip
 import torch
 from PIL import Image
 from torchvision import transforms
-
+from colorthief import ColorThief
+import io
 
 tokenizer = open_clip.get_tokenizer('ViT-B-32')
 clip_model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='openai')
@@ -68,3 +69,21 @@ def generate_tags_from_caption(caption):
 
 def parse_tags(text):
     return [tag.strip().lower() for tag in text.split(',') if tag.strip()]
+
+def get_dominant_color(image_file):
+    try:
+         
+        if hasattr(image_file, 'read'):
+            image_file.seek(0)
+            color_thief = ColorThief(io.BytesIO(image_file.read()))
+        else:
+            color_thief = ColorThief(image_file)
+
+        dominant_rgb = color_thief.get_color(quality=1)
+        # Convert RGB to HEX
+        hex_color = '#%02x%02x%02x' % dominant_rgb
+        print("Dominant Color (HEX):", hex_color)
+        return hex_color
+    except Exception as e:
+        print(f"Color extraction failed: {e}")
+        return None
