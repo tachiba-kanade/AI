@@ -13,6 +13,7 @@ class ImageDataSerializer(serializers.ModelSerializer):
     tags = serializers.CharField(write_only=True)  
     image_tags = TagSerializer(many=True, read_only=True)
 
+
     class Meta:
         model = ImageData
         fields = ['id', 'image', 'image_text', 'image_embedding', 'image_meta', 'image_tags', 'tags', 'dominant_color',]
