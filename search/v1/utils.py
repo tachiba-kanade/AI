@@ -16,7 +16,7 @@ clip_model.eval()
 
 def generate_image_embedding(image_path_or_file):
     image = Image.open(image_path_or_file).convert("RGB")
-    image_tensor = preprocess(image).unsqueeze(0)  # add batch dimension
+    image_tensor = preprocess(image).unsqueeze(0)  
     with torch.no_grad():
         embedding = clip_model.encode_image(image_tensor)
     return embedding.squeeze().numpy()

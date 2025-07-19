@@ -12,7 +12,7 @@ import open_clip
 import torch
 from search.v1.serializers import ImageDataSerializer
 from search.v1.utils import extract_image_metadata, generate_image_embedding, generate_image_text, generate_tags_from_caption, parse_tags, get_dominant_color
-
+from django.http import QueryDict
 
 model = SentenceTransformer('clip-ViT-B-32')
 
@@ -170,7 +170,7 @@ def color_search(request):
     color_query = request.GET.get('color', '').strip().lower()
 
     if not color_query:
-        return Response({"error": "Provide a 'color' hex code or name, e.g., '#ff0000'"}, status=400)
+        return Response({"error": "Provide a 'color' hex code or name"}, status=400)
 
     def hex_to_rgb(hex_color):
         hex_color = hex_color.lstrip('#')
@@ -201,3 +201,24 @@ def color_search(request):
         "results": top_matches
     })
 
+#to detect the different input and redirect 
+@api_view(['POST'])
+@parser_classes([MultiPartParser, FormParser])
+def input_detect(request):
+    image = request.FILES.get('image')
+    query = request.data.get('query', '').strip()
+    color = request.data.get('color', '').strip().lower()
+
+    if image:
+        return upload_and_search(request)
+
+    elif query:
+        return text_search(request)
+
+    elif color:
+        mutable_get = request._request.GET.copy() if hasattr(request._request, 'GET') else QueryDict(mutable=True)
+        mutable_get['color'] = color
+        request._request.GET = mutable_get
+        return color_search(request)
+
+    return Response({"error": "Provide at least one of: 'image', 'query', or 'color'"}, status=400)

@@ -12,6 +12,7 @@ class TagSerializer(serializers.ModelSerializer):
 class ImageDataSerializer(serializers.ModelSerializer):
     tags = serializers.CharField(write_only=True)  
     image_tags = TagSerializer(many=True, read_only=True)
+    
 
 
     class Meta:
