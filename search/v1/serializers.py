@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from search.models import ImageData, Tag
-from search.v1.utils import extract_image_metadata, generate_image_embedding, generate_image_text, parse_tags, get_dominant_color
+from search.v1.utils.utils import extract_image_metadata, generate_image_embedding, generate_image_text, parse_tags, get_dominant_color
 
 
 class TagSerializer(serializers.ModelSerializer):

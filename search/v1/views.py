@@ -11,8 +11,11 @@ from sentence_transformers import SentenceTransformer
 import open_clip
 import torch
 from search.v1.serializers import ImageDataSerializer
-from search.v1.utils import extract_image_metadata, generate_image_embedding, generate_image_text, generate_tags_from_caption, parse_tags, get_dominant_color
+from search.v1.utils.search_utils import direct_color_search, direct_image_upload_search, direct_text_search
+from search.v1.utils.utils import extract_image_metadata, generate_image_embedding, generate_image_text, generate_tags_from_caption, parse_tags, get_dominant_color
 from django.http import QueryDict
+
+from search.v1.utils.view_utils import extract_all_tags, find_similar_colors, find_similar_images, save_image_to_db
 
 model = SentenceTransformer('clip-ViT-B-32')
 
@@ -51,55 +54,55 @@ def search_images(request):
     return Response(top_results)
 
 
-@api_view(['POST'])
-@parser_classes([MultiPartParser, FormParser])
-def upload_and_search(request):
-    image_file = request.FILES.get('image')
-    user_tags = request.data.get('tags', '')  # Optional extra tags
+# @api_view(['POST'])
+# @parser_classes([MultiPartParser, FormParser])
+# def upload_and_search(request):
+#     image_file = request.FILES.get('image')
+#     user_tags = request.data.get('tags', '')  # Optional extra tags
 
-    if not image_file:
-        return Response({"error": "Image file is required."}, status=400)
+#     if not image_file:
+#         return Response({"error": "Image file is required."}, status=400)
 
-    # Generate AI features
-    caption = generate_image_text(image_file)
-    embedding_array = generate_image_embedding(image_file).astype(np.float32)
-    embedding_bytes = embedding_array.tobytes()
-    metadata = extract_image_metadata(image_file)
-    auto_tags = generate_tags_from_caption(caption)
-    all_tags = set(auto_tags + parse_tags(user_tags))
-    dominant_color = get_dominant_color(image_file) 
+#     # Generate AI features
+#     caption = generate_image_text(image_file)
+#     embedding_array = generate_image_embedding(image_file).astype(np.float32)
+#     embedding_bytes = embedding_array.tobytes()
+#     metadata = extract_image_metadata(image_file)
+#     auto_tags = generate_tags_from_caption(caption)
+#     all_tags = set(auto_tags + parse_tags(user_tags))
+#     dominant_color = get_dominant_color(image_file) 
 
-    # Save to DB
-    image_instance = ImageData.objects.create(
-        image=image_file,
-        image_text=caption,
-        image_embedding=embedding_bytes,
-        image_meta=metadata,
-        dominant_color=dominant_color
-    )
+#     # Save to DB
+#     image_instance = ImageData.objects.create(
+#         image=image_file,
+#         image_text=caption,
+#         image_embedding=embedding_bytes,
+#         image_meta=metadata,
+#         dominant_color=dominant_color
+#     )
 
-    for tag_name in all_tags:
-        tag_obj, _ = Tag.objects.get_or_create(name=tag_name)
-        image_instance.image_tags.add(tag_obj)
+#     for tag_name in all_tags:
+#         tag_obj, _ = Tag.objects.get_or_create(name=tag_name)
+#         image_instance.image_tags.add(tag_obj)
 
-    # Vector search (cosine similarity)
-    query_emb = np.array(embedding_array, dtype=np.float32)
-    results = []
-    for obj in ImageData.objects.exclude(id=image_instance.id):
-        if not obj.image_embedding:
-            continue
-        db_emb = np.frombuffer(obj.image_embedding, dtype=np.float32)
-        sim = np.dot(query_emb, db_emb) / (np.linalg.norm(query_emb) * np.linalg.norm(db_emb))
-        results.append((sim, obj))
+#     # Vector search (cosine similarity)
+#     query_emb = np.array(embedding_array, dtype=np.float32)
+#     results = []
+#     for obj in ImageData.objects.exclude(id=image_instance.id):
+#         if not obj.image_embedding:
+#             continue
+#         db_emb = np.frombuffer(obj.image_embedding, dtype=np.float32)
+#         sim = np.dot(query_emb, db_emb) / (np.linalg.norm(query_emb) * np.linalg.norm(db_emb))
+#         results.append((sim, obj))
 
-    results.sort(key=lambda x: x[0], reverse=True)
-    # Selecting TOP 5 Relatable Images
-    top_related = [ImageDataSerializer(obj).data for _, obj in results[:5]]
+#     results.sort(key=lambda x: x[0], reverse=True)
+#     # Selecting TOP 5 Relatable Images
+#     top_related = [ImageDataSerializer(obj).data for _, obj in results[:5]]
 
-    return Response({
-        "uploaded_image": ImageDataSerializer(image_instance).data,
-        "related_images": top_related
-    })
+#     return Response({
+#         "uploaded_image": ImageDataSerializer(image_instance).data,
+#         "related_images": top_related
+#     })
 
 # @api_view(['POST'])
 # def text_search(request):
@@ -130,95 +133,157 @@ def upload_and_search(request):
 
 
 
-#text_search
+# #text_search
+# @api_view(['POST'])
+# def text_search(request):
+#     query = request.data.get('query', '').strip()
+#     if not query:
+#         return Response({"error": "Field 'query' is required."}, status=400)
+
+#     # Format prompt and encode text with OpenCLIP
+#     prompt = f"a photo of {query}"
+#     with torch.no_grad():
+#         text_tokens = tokenizer([prompt])
+#         text_embedding = clip_model.encode_text(text_tokens).squeeze().numpy()
+#         text_embedding = text_embedding / np.linalg.norm(text_embedding)
+
+#     results = []
+#     for obj in ImageData.objects.all():
+#         if not obj.image_embedding:
+#             continue
+#         db_emb = np.frombuffer(obj.image_embedding, dtype=np.float32)
+#         db_emb = db_emb / np.linalg.norm(db_emb)
+#         sim = float(np.dot(text_embedding, db_emb))
+#         results.append((sim, obj))
+
+#     results.sort(key=lambda x: x[0], reverse=True)
+#     top_results = []
+#     for sim, obj in results[:5]:
+#         data = ImageDataSerializer(obj).data
+#         data['similarity_score'] = round(sim, 4)
+#         top_results.append(data)
+
+#     return Response({
+#         "query": query,
+#         "results": top_results
+#     })
+
+
+# #color_search
+# @api_view(['GET'])
+# def color_search(request):
+#     color_query = request.GET.get('color', '').strip().lower()
+
+#     if not color_query:
+#         return Response({"error": "Provide a 'color' hex code or name"}, status=400)
+
+#     def hex_to_rgb(hex_color):
+#         hex_color = hex_color.lstrip('#')
+#         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+#     try:
+#         query_rgb = hex_to_rgb(color_query)
+#     except:
+#         return Response({"error": "Invalid hex color format. Use like '#aabbcc'"}, status=400)
+
+#     def color_distance(c1, c2):
+#         return sum((a - b) ** 2 for a, b in zip(c1, c2)) ** 0.5
+
+#     matches = []
+#     for obj in ImageData.objects.exclude(dominant_color__isnull=True):
+#         try:
+#             db_rgb = hex_to_rgb(obj.dominant_color)
+#             dist = color_distance(query_rgb, db_rgb)
+#             matches.append((dist, obj))
+#         except:
+#             continue
+
+#     matches.sort(key=lambda x: x[0])
+#     top_matches = [ImageDataSerializer(obj).data for _, obj in matches[:5]]
+
+#     return Response({
+#         "query_color": color_query,
+#         "results": top_matches
+#     })
+
+
+# #to detect the different input and redirect 
+# @api_view(['POST'])
+# @parser_classes([MultiPartParser, FormParser])
+# def input_detect(request):
+#     image = request.FILES.get('image')
+#     query = request.data.get('query', False)
+#     color = request.data.get('color', False)
+
+#     if image:
+#         return upload_and_search(request)
+#     elif query:
+#         return text_search(request)
+#     elif color:
+#         mutable_get = request._request.GET.copy() if hasattr(request._request, 'GET') else QueryDict(mutable=True)
+#         mutable_get['color'] = color
+#         request._request.GET = mutable_get
+#         return color_search(request)
+
+#     return Response({"error": "Provide at least one of: 'image', 'query', or 'color'"}, status=400)
+
+
+
+@api_view(['POST'])
+@parser_classes([MultiPartParser, FormParser])
+def upload_and_search(request):
+    image_file = request.FILES.get('image')
+    user_tags = request.data.get('tags', '')
+
+    if not image_file:
+        return Response({"error": "Image file is required."}, status=400)
+
+    result = direct_image_upload_search(image_file, user_tags)
+    return Response(result)
+
+
 @api_view(['POST'])
 def text_search(request):
     query = request.data.get('query', '').strip()
     if not query:
         return Response({"error": "Field 'query' is required."}, status=400)
 
-    # Format prompt and encode text with OpenCLIP
-    prompt = f"a photo of {query}"
-    with torch.no_grad():
-        text_tokens = tokenizer([prompt])
-        text_embedding = clip_model.encode_text(text_tokens).squeeze().numpy()
-        text_embedding = text_embedding / np.linalg.norm(text_embedding)
+    result = direct_text_search(query)
+    return Response({"query": query, "results": result})
 
-    results = []
-    for obj in ImageData.objects.all():
-        if not obj.image_embedding:
-            continue
-        db_emb = np.frombuffer(obj.image_embedding, dtype=np.float32)
-        db_emb = db_emb / np.linalg.norm(db_emb)
-        sim = float(np.dot(text_embedding, db_emb))
-        results.append((sim, obj))
 
-    results.sort(key=lambda x: x[0], reverse=True)
-    top_results = []
-    for sim, obj in results[:5]:
-        data = ImageDataSerializer(obj).data
-        data['similarity_score'] = round(sim, 4)
-        top_results.append(data)
-
-    return Response({
-        "query": query,
-        "results": top_results
-    })
-#color_search
 @api_view(['GET'])
 def color_search(request):
     color_query = request.GET.get('color', '').strip().lower()
-
     if not color_query:
         return Response({"error": "Provide a 'color' hex code or name"}, status=400)
 
-    def hex_to_rgb(hex_color):
-        hex_color = hex_color.lstrip('#')
-        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-
     try:
-        query_rgb = hex_to_rgb(color_query)
-    except:
-        return Response({"error": "Invalid hex color format. Use like '#aabbcc'"}, status=400)
+        result = direct_color_search(color_query)
+    except ValueError as e:
+        return Response({"error": str(e)}, status=400)
 
-    def color_distance(c1, c2):
-        return sum((a - b) ** 2 for a, b in zip(c1, c2)) ** 0.5
+    return Response({"query_color": color_query, "results": result})
 
-    matches = []
-    for obj in ImageData.objects.exclude(dominant_color__isnull=True):
-        try:
-            db_rgb = hex_to_rgb(obj.dominant_color)
-            dist = color_distance(query_rgb, db_rgb)
-            matches.append((dist, obj))
-        except:
-            continue
 
-    matches.sort(key=lambda x: x[0])
-    top_matches = [ImageDataSerializer(obj).data for _, obj in matches[:5]]
-
-    return Response({
-        "query_color": color_query,
-        "results": top_matches
-    })
-
-#to detect the different input and redirect 
 @api_view(['POST'])
 @parser_classes([MultiPartParser, FormParser])
 def input_detect(request):
     image = request.FILES.get('image')
-    query = request.data.get('query', '').strip()
-    color = request.data.get('color', '').strip().lower()
+    query = request.data.get('query')
+    color = request.data.get('color')
 
-    if image:
-        return upload_and_search(request)
-
-    elif query:
-        return text_search(request)
-
-    elif color:
-        mutable_get = request._request.GET.copy() if hasattr(request._request, 'GET') else QueryDict(mutable=True)
-        mutable_get['color'] = color
-        request._request.GET = mutable_get
-        return color_search(request)
+    try:
+        if image:
+            img_results = direct_image_upload_search(image, [])
+            return Response({"results": img_results})
+        elif query:
+            q_results = direct_text_search(query)
+            return Response({"query": query, "results": q_results})
+        elif color:
+            color_result = direct_color_search(color)
+            return Response({"query_color": color, "results": color_result})
+    except Exception as e:
+        return Response({"error": str(e)}, status=400)
 
     return Response({"error": "Provide at least one of: 'image', 'query', or 'color'"}, status=400)

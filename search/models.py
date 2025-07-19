@@ -1,4 +1,5 @@
 from django.db import models
+import os
 
 
 class Tag(models.Model):
@@ -20,5 +21,10 @@ class ImageData(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     dominant_color = models.CharField(max_length=20, blank=True, null=True)
 
+    def delete(self, using=None, keep_parents=False):
+        if self.image and os.path.isfile(self.image.path):
+            os.remove(self.image.path)
+        return super().delete(using=using, keep_parents=keep_parents)
+
     def __str__(self):
-        return f" {self.id}"
+        return f" {self.id} "

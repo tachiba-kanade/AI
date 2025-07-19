@@ -1,17 +1,17 @@
 from PIL import Image as PILImage
-from sentence_transformers import SentenceTransformer
 import spacy
-from transformers import BlipProcessor, BlipForConditionalGeneration
 from PIL import Image
 import open_clip
 import torch
 from PIL import Image
-from torchvision import transforms
 from colorthief import ColorThief
 import io
 
+from transformers import Blip2Processor, Blip2ForConditionalGeneration
+
 tokenizer = open_clip.get_tokenizer('ViT-B-32')
-clip_model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='openai')
+# clip_model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='openai')
+clip_model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32-quickgelu', pretrained='openai')
 clip_model.eval()
 
 def generate_image_embedding(image_path_or_file):
@@ -21,20 +21,36 @@ def generate_image_embedding(image_path_or_file):
         embedding = clip_model.encode_image(image_tensor)
     return embedding.squeeze().numpy()
 
+# Version 1.0
+# from transformers import BlipProcessor, BlipForConditionalGeneration
 
-from transformers import BlipProcessor, BlipForConditionalGeneration
+# caption_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+# caption_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
 
-caption_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-caption_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
+# def generate_image_text(image_path_or_file):
+#     image = Image.open(image_path_or_file).convert("RGB")
+#     inputs = caption_processor(images=image, return_tensors="pt")
+#     out = caption_model.generate(**inputs)
+#     caption = caption_processor.decode(out[0], skip_special_tokens=True)
+#     print("Caption: --> ", caption)
+#     return caption
+
+# Load BLIP-2 with Flan-T5 XL (very detailed)
+
+# Version 2.0
+processor = Blip2Processor.from_pretrained("Salesforce/blip2-flan-t5-xl", use_fast=True)
+model = Blip2ForConditionalGeneration.from_pretrained("Salesforce/blip2-flan-t5-xl", torch_dtype=torch.float16)
+model.eval()
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model.to(device)
 
 def generate_image_text(image_path_or_file):
     image = Image.open(image_path_or_file).convert("RGB")
-    inputs = caption_processor(images=image, return_tensors="pt")
-    out = caption_model.generate(**inputs)
-    caption = caption_processor.decode(out[0], skip_special_tokens=True)
-    print("Caption: --> ", caption)
-    return caption
-
+    prompt = "Describe this image in detail with major colors in the photo."
+    inputs = processor(images=image, text=prompt, return_tensors="pt").to(device, torch.float16)
+    output = model.generate(**inputs, max_new_tokens=250)
+    description = processor.decode(output[0], skip_special_tokens=True)
+    return description
 
 def extract_image_metadata(image_file):
     try:
@@ -72,7 +88,6 @@ def parse_tags(text):
 
 def get_dominant_color(image_file):
     try:
-         
         if hasattr(image_file, 'read'):
             image_file.seek(0)
             color_thief = ColorThief(io.BytesIO(image_file.read()))
